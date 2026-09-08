@@ -45,7 +45,26 @@ jobs:
             exit 1
           fi
           echo "Found: $APP"
+
+          # Check app size before zipping
+          APP_SIZE_MB=$(du -sm "$APP" | cut -f1)
+          echo "App size: ${APP_SIZE_MB}MB"
+
+          if [ "$APP_SIZE_MB" -gt 500 ]; then
+            echo "PEEKABOO_ERROR: APP_TOO_LARGE:${APP_SIZE_MB}" | tee .peekaboo_error
+            exit 2
+          fi
+
           zip -r app.zip "$APP"
+          ZIP_SIZE_MB=$(du -sm app.zip | cut -f1)
+          echo "Zipped: ${ZIP_SIZE_MB}MB"
+
+          if [ "$ZIP_SIZE_MB" -gt 50 ]; then
+            echo "PEEKABOO_ERROR: ZIP_TOO_LARGE:${ZIP_SIZE_MB}" | tee .peekaboo_error
+            exit 2
+          fi
+
+          echo "Size check passed"
         working-directory: .
 
       - name: Get signed upload URL
@@ -75,12 +94,22 @@ jobs:
       - name: Notify failure
         if: failure()
         run: |
+          ERROR_MSG="Build failed on GitHub Actions"
+          EXIT_CODE=$?
+
+          # Check if it was a size error
+          if grep -r "PEEKABOO_ERROR: ZIP_TOO_LARGE" . 2>/dev/null || \
+             grep -r "PEEKABOO_ERROR: APP_TOO_LARGE" . 2>/dev/null; then
+            SIZE=$(grep -r "PEEKABOO_ERROR:.*LARGE" . 2>/dev/null | grep -o '[0-9]*$' | head -1)
+            ERROR_MSG="APP_SIZE_LIMIT:${SIZE}MB"
+          fi
+
           curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }} \
             -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "build_id": "${{ github.event.inputs.build_id }}",
-              "status": "failed",
-              "error": "Build failed. Check GitHub Actions for details: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }'
+            -d "{
+              \"build_id\": \"${{ github.event.inputs.build_id }}\",
+              \"status\": \"failed\",
+              \"error\": \"$ERROR_MSG. Full logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"
         working-directory: .
