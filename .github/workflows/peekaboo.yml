@@ -69,38 +69,22 @@ jobs:
 
       - name: Get signed upload URL
         run: |
-          # Extract base URL from webhook URL
-          # PEEKABOO_WEBHOOK_URL = https://peekabo-gray.vercel.app/api/webhook/build
-          # Upload URL = https://peekabo-gray.vercel.app/api/upload-url
           WEBHOOK_URL="${{ secrets.PEEKABOO_WEBHOOK_URL }}"
           BASE_URL=$(echo "$WEBHOOK_URL" | sed 's|/api/webhook/build||')
           UPLOAD_URL="$BASE_URL/api/upload-url"
-
           echo "Base URL: $BASE_URL"
           echo "Upload URL: $UPLOAD_URL"
-
           RESPONSE=$(curl -s -X POST "$UPLOAD_URL" \
             -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
             -H "Content-Type: application/json" \
             -d '{"build_id":"${{ github.event.inputs.build_id }}"}')
-
           echo "Response: $RESPONSE"
-
-          SIGNED_URL=$(echo "$RESPONSE" | python3 -c "
-      import json,sys
-      try:
-        data=json.load(sys.stdin)
-        print(data.get('signedUrl',''))
-      except:
-        print('')
-      ")
-
+          SIGNED_URL=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('signedUrl',''))")
           if [ -z "$SIGNED_URL" ]; then
             echo "ERROR: Could not get signed URL"
             echo "Response was: $RESPONSE"
             exit 1
           fi
-
           echo "✓ Got signed URL"
           echo "SIGNED_URL=$SIGNED_URL" >> $GITHUB_ENV
         working-directory: .
